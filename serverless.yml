@@ -1,0 +1,53 @@
+service: office-file-processor
+
+provider:
+  name: aws
+  stage: ${opt:stage, 'dev'}
+  runtime: nodejs12.x
+  region: eu-west-1
+  memorySize: 1536
+  apiGateway:
+    shouldStartNameWithService: true
+
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:GetObject"
+        - "s3:PutObject"
+        - "s3:PutObjectAcl"
+      Resource: ${file(serverless-config.${self:provider.stage}.json):S3_BUCKET_PROCESSOR}
+    - Effect: "Allow"
+      Action:
+        - "ssm:DescribeParameters"
+        - "ssm:GetParametersByPath"
+        - "ssm:GetParameters"
+        - "ssm:GetParameter"
+      Resource: ${file(serverless-config.${self:provider.stage}.json):SSM_STORE}
+  environment:
+    API_KEY: ${ssm:/FileProcessor/${self:provider.stage}/ApiKey}
+    BUCKET: ${file(serverless-config.${self:provider.stage}.json):S3_BUCKET_PROCESSOR_NAME}
+    FONTCONFIG_PATH: "/var/task/fonts"
+
+resources:
+  Resources:
+    S3SharedBucketArtifacts:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${file(serverless-config.${self:provider.stage}.json):S3_BUCKET_PROCESSOR_NAME}
+
+package:
+  exclude:
+    - .git/**
+    - README.md
+    - tests/**
+
+functions:
+
+  convert_office_to_pdf_sync_from_url:
+    handler: fileconvert.httpHandlerFromURL
+    description: 'Convert office files to PDF via HTTP'
+    timeout: 28
+    layers:
+      - "arn:aws:lambda:eu-west-1:764866452798:layer:libreoffice-brotli:1"
+    events:
+      - http: 'POST /api/v1/file/convert'

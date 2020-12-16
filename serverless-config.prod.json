@@ -1,0 +1,5 @@
+{
+    "S3_BUCKET_PROCESSOR": "arn:aws:s3:::office-file-processor-prod/*",
+    "S3_BUCKET_PROCESSOR_NAME": "office-file-processor-prod",
+    "SSM_STORE": "arn:aws:ssm:eu-west-1:877188647410:parameter/FileProcessor/prod/*"
+}
