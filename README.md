@@ -8,7 +8,7 @@ Support for **custom fonts** to conversion. See the `fonts` folder for supported
 
 * Serverless Framework
 * AWS Lambda
-* LibreOffice Lambda Layer (https://github.com/shelfio/libreoffice-lambda-layer)
+* LibreOffice 6.4 Lambda Layer (https://github.com/shelfio/libreoffice-lambda-layer)
 
 
 ## Config

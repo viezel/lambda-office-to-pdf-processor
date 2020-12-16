@@ -54,13 +54,6 @@ exports.httpHandlerFromURL = function (event, context, callback) {
         });
     }
 
-    /*
-        // example http payload
-        {
-            "url": "https://example.com/my/file.pptx"
-        }
-     */
-
     // parse http payload
     let data = JSON.parse(event.body);
     const url = data.url,
