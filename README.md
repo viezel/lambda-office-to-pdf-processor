@@ -51,7 +51,8 @@ HTTP Response:
 ### SQS Event
 
 With SQS Queue we can use much higher processing time for complex documents. 
-Secondly we can use SQS to 
+Secondly we can use SQS to integrate to a service in a private network. 
+
 ```bash
 {
     "bucket": "office-file-processor-dev",
