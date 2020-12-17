@@ -23,6 +23,14 @@ provider:
         - "ssm:GetParameters"
         - "ssm:GetParameter"
       Resource: ${file(serverless-config.${self:provider.stage}.json):SSM_STORE}
+    - Effect: "Allow"
+      Action:
+        - "sqs:ReceiveMessage"
+        - "sqs:DeleteMessage"
+        - "sqs:GetQueueAttributes"
+      Resource:
+        Fn::GetAtt: [ SQSQueue, Arn ]
+
   environment:
     API_KEY: ${ssm:/FileProcessor/${self:provider.stage}/ApiKey}
     BUCKET: ${file(serverless-config.${self:provider.stage}.json):S3_BUCKET_PROCESSOR_NAME}
@@ -34,6 +42,11 @@ resources:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: ${file(serverless-config.${self:provider.stage}.json):S3_BUCKET_PROCESSOR_NAME}
+    SQSQueue:
+      Type: "AWS::SQS::Queue"
+      Properties:
+        QueueName: ${file(serverless-config.${self:provider.stage}.json):NAME}
+        VisibilityTimeout: 900
 
 package:
   exclude:
@@ -51,3 +64,16 @@ functions:
       - "arn:aws:lambda:eu-west-1:764866452798:layer:libreoffice-brotli:1"
     events:
       - http: 'POST /api/v1/file/convert'
+
+  convert_office_to_pdf_sqs:
+    handler: fileconvert.sqsHandler
+    description: 'Convert office files to PDF via SQS Queue'
+    timeout: 900
+    layers:
+      - "arn:aws:lambda:eu-west-1:764866452798:layer:libreoffice-brotli:1"
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - SQSQueue
+              - Arn

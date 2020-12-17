@@ -39,6 +39,66 @@ function downloadFile(url, filePath) {
 }
 
 /**
+ * Download a file from S3
+ * @param {String} bucket
+ * @param {String} fileKey
+ * @param {String} filePath
+ * @returns {Promise<String>}
+ */
+function downloadFileFromS3(bucket, fileKey, filePath) {
+    return new Promise(function (resolve, reject) {
+        const file = fs.createWriteStream(filePath),
+            stream = s3.getObject({
+                Bucket: bucket,
+                Key: fileKey
+            }).createReadStream();
+        stream.on('error', err => {
+            console.error('downloadFileFromS3 stream error', err);
+        });
+        file.on('error', err => {
+            console.error('downloadFileFromS3 file error', err);
+        });
+        file.on('finish', function () {
+            resolve(filePath);
+        });
+        stream.pipe(file);
+    });
+}
+
+/**
+ * @param {String} requestUrl
+ * @param {Object} payload
+ * @param {Object} extraHeaders
+ * @returns {Promise<Object,int>}
+ */
+function postRequest(requestUrl, payload, extraHeaders) {
+    const urlOptions = url.parse(requestUrl)
+    const headers = {'Accept': 'application/json', 'Content-Type': 'application/json', ...extraHeaders};
+    const options = { ...urlOptions, port: 443, method: 'POST', headers };
+    return new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+            let body = '';
+            res.on('data', chunk => body += chunk);
+            res.on('end', () => {
+                const statusCode = JSON.stringify(res.statusCode);
+                const statusMessage = JSON.stringify(res.statusMessage);
+                if (statusCode >= 400) {
+                    console.error(body);
+                    reject(statusMessage, statusCode);
+                    return;
+                }
+                resolve(body, statusCode);
+            });
+        });
+        req.on('error', (e) => {
+            reject(e.message, e.code);
+        });
+        req.write(JSON.stringify(payload));
+        req.end();
+    });
+}
+
+/**
  * HTTP Handler from URL
  * @param event
  * @param context
@@ -101,5 +161,76 @@ exports.httpHandlerFromURL = function (event, context, callback) {
                 body: JSON.stringify({ error: error}),
                 headers: {'Content-Type': 'application/json'}
             });
+        });
+};
+
+
+exports.sqsHandler = function (event, context, callback) {
+    /*
+        // example SQS event
+        {
+            "bucket": "office-file-processor-dev",
+            "key": "upload/custom-fonts.pptx",
+            "acl": "public-read", // optional
+            "callback_url": "https://example.com/api/callback/123454234132423" // optional
+        }
+
+        {
+            "bucket": "office-file-processor-dev",
+            "key": "upload/custom-fonts.pptx"
+        }
+     */
+
+    // parse SQS body
+    const data = JSON.parse(event.Records[0].body);
+    const bucket = data.bucket,
+        key = data.key,
+        acl = (data.acl !== undefined) ? data.acl : 'private',
+        callback_url = data.callback_url;
+
+    const workdir = os.tmpdir(),
+        file = key.split('/').pop(),
+        inputFile = path.join(workdir, file),
+        outputFile = inputFile.replace(/\.[^.]+$/, '.pdf'),
+        outputKey = key.replace(/\.[^.]+$/, '.pdf');
+
+    // validate SQS
+    if (!bucket || !key) {
+        callback("Validation Error: Payload Invalid");
+        return;
+    }
+
+    // 1. download file from S3
+    downloadFileFromS3(bucket, key, inputFile)
+        // 2. convert to PDF
+        .then(() => convertTo(file, 'pdf'))
+        // 3. upload converted file back to S3
+        .then(() => {
+            return s3.upload({
+                Bucket: bucket,
+                Key: outputKey,
+                Body: fs.createReadStream(outputFile),
+                ACL: acl,
+                CacheControl: "max-age=314496000,immutable",
+                ContentType: "application/pdf"
+            }).promise();
+        })
+        // 4. Optional, let an API service know the results
+        .then(function() {
+            if(callback_url) {
+                return postRequest(callback_url, {
+                    'source_file': bucket + '/' + key,
+                    'converted_file': bucket + '/' + outputKey,
+                    'success': true
+                });
+            }
+        })
+        .catch(function() {
+            if(callback_url) {
+                return postRequest(callback_url, {
+                    'source_file': bucket + '/' + key,
+                    'success': false
+                });
+            }
         });
 };
